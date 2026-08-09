@@ -37,7 +37,7 @@
 
 ## 6. Documentation & Publishing
 
-- [ ] 6.1 Write the English `README.md`: what the tool does, install via `cargo install`, usage/examples, options reference
-- [ ] 6.2 Add a `LICENSE` (MIT — chosen by the author)
-- [ ] 6.3 Ensure `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test` pass locally
-- [ ] 6.4 Create the GitHub repository and push the initial commit
+- [x] 6.1 Write the English `README.md`: what the tool does, install via `cargo install`, usage/examples, options reference
+- [x] 6.2 Add a `LICENSE` (MIT — chosen by the author)
+- [x] 6.3 Ensure `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test` pass locally
+- [x] 6.4 Create the GitHub repository and push the initial commit
