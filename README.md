@@ -1,5 +1,10 @@
 # randanarana
 
+[![Crates.io version](https://img.shields.io/crates/v/randanarana.svg)](https://crates.io/crates/randanarana)
+[![Crates.io downloads](https://img.shields.io/crates/d/randanarana.svg)](https://crates.io/crates/randanarana)
+[![docs.rs](https://docs.rs/randanarana/badge.svg)](https://docs.rs/randanarana)
+[![CI](https://img.shields.io/github/actions/workflow/status/berthosefin/randanarana/ci.yml?branch=main)](https://github.com/berthosefin/randanarana/actions/workflows/ci.yml)
+
 Rename files in a directory to random alphanumeric names, keeping their
 extensions. A Rust reimplementation of an existing bash script, with tests,
 CI, and the same CLI and behavior.
@@ -19,18 +24,28 @@ Done: 3 renamed, 0 skipped, 0 failed.
 
 ## Install
 
-Requires a recent Rust toolchain (edition 2024):
+Prebuilt binaries (recommended, via [cargo-binstall](https://github.com/cargo-bins/cargo-binstall)):
 
 ```
-rustup update stable
-cargo install --path .
+cargo binstall randanarana
 ```
 
-Or build from source and use the binary at `target/release/randanarana`:
+From crates.io:
 
 ```
-cargo build --release
+cargo install randanarana
 ```
+
+Direct downloads: prebuilt binaries for Linux, macOS and Windows are attached
+to every [GitHub Release](https://github.com/berthosefin/randanarana/releases),
+along with an installer script:
+
+```
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/berthosefin/randanarana/releases/latest/download/randanarana-installer.sh | sh
+```
+
+Contributors can install from a local checkout with `cargo install --path .`
+(requires a recent Rust toolchain, edition 2024).
 
 ## Usage
 
@@ -129,6 +144,22 @@ cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
+
+## Releasing
+
+Releases are automated by [release-plz](https://release-plz.dev) and
+[cargo-dist](https://opensource.axo.dev/cargo-dist/). One-time author setup:
+
+1. `cargo login` and generate a crates.io token; add it as the
+   `CARGO_REGISTRY_TOKEN` secret in the repository's
+   [Actions settings](https://github.com/berthosefin/randanarana/settings/secrets/actions).
+2. Create a GitHub Personal Access Token (Contents and Pull requests
+   read/write) and add it as the `RELEASE_PLZ_TOKEN` secret.
+
+After that, every push to `main` makes release-plz open a release pull request
+(version bump per conventional commits + CHANGELOG). Merging it tags `vX.Y.Z`
+and publishes the crate to crates.io; cargo-dist then builds the prebuilt
+binaries and attaches them to the GitHub Release.
 
 ## License
 
