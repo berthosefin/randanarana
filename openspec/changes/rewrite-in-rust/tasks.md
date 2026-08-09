@@ -13,10 +13,10 @@
 
 ## 3. Name Generation (capability: name-generation)
 
-- [ ] 3.1 Implement the random body generator (charset a-zA-Z0-9, configurable length) in `src/names.rs`
-- [ ] 3.2 Implement full-name assembly: prefix + body + suffix + preserved extension (no extension for directories)
-- [ ] 3.3 Implement uniqueness: reserve existing basenames in a `HashSet`, regenerate on collision, insert each new name
-- [ ] 3.4 Implement `matches_pattern` (prefix/suffix/length/alnum check) for skip detection
+- [x] 3.1 Implement the random body generator (charset a-zA-Z0-9, configurable length) in `src/names.rs`
+- [x] 3.2 Implement full-name assembly: prefix + body + suffix + preserved extension (no extension for directories)
+- [x] 3.3 Implement uniqueness: reserve existing basenames in a `HashSet`, regenerate on collision, insert each new name
+- [x] 3.4 Implement `matches_pattern` (prefix/suffix/length/alnum check) for skip detection
 
 ## 4. Renaming Core (capability: renaming)
 

@@ -30,3 +30,9 @@ schema: spec-driven
 #     archive:
 #       guidance:
 #         - Summarize the archive outcome before finishing
+
+operations:
+  apply:
+    guidance:
+      - Mentor the author: let them write code where possible, explain concepts in depth, and review/correct their code instead of doing everything.
+      - At each logical stopping point (e.g. after a task group), propose a conventional commit message (feat:/fix:/refactor:/docs:/chore:) and let the author run the commit.

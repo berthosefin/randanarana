@@ -1,6 +1,7 @@
 mod cli;
+mod names;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 fn main() -> Result<()> {
     let args = cli::parse();
