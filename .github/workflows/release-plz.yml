@@ -9,36 +9,42 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'berthosefin' && env.RELEASE_PLZ_TOKEN_SET == 'true' }}
+    if: ${{ github.repository_owner == 'berthosefin' }}
     env:
-      RELEASE_PLZ_TOKEN_SET: ${{ secrets.RELEASE_PLZ_TOKEN != '' }}
+      RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
     permissions:
       contents: write
       id-token: write
     steps:
+      - name: Skip unless RELEASE_PLZ_TOKEN is configured
+        if: ${{ env.RELEASE_PLZ_TOKEN == '' }}
+        run: echo "RELEASE_PLZ_TOKEN is not configured; skipping release"
       - &checkout
+        if: ${{ env.RELEASE_PLZ_TOKEN != '' }}
         name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
-          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          token: ${{ env.RELEASE_PLZ_TOKEN }}
       - &install-rust
+        if: ${{ env.RELEASE_PLZ_TOKEN != '' }}
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+        if: ${{ env.RELEASE_PLZ_TOKEN != '' }}
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          GITHUB_TOKEN: ${{ env.RELEASE_PLZ_TOKEN }}
 
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'berthosefin' && env.RELEASE_PLZ_TOKEN_SET == 'true' }}
+    if: ${{ github.repository_owner == 'berthosefin' }}
     env:
-      RELEASE_PLZ_TOKEN_SET: ${{ secrets.RELEASE_PLZ_TOKEN != '' }}
+      RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
     permissions:
       pull-requests: write
       contents: write
@@ -46,11 +52,15 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
+      - name: Skip unless RELEASE_PLZ_TOKEN is configured
+        if: ${{ env.RELEASE_PLZ_TOKEN == '' }}
+        run: echo "RELEASE_PLZ_TOKEN is not configured; skipping PR"
       - *checkout
       - *install-rust
       - name: Run release-plz
+        if: ${{ env.RELEASE_PLZ_TOKEN != '' }}
         uses: release-plz/action@v0.5
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          GITHUB_TOKEN: ${{ env.RELEASE_PLZ_TOKEN }}
