@@ -20,13 +20,13 @@
 
 ## 4. Renaming Core (capability: renaming)
 
-- [ ] 4.1 Implement discovery in `src/renamer.rs`: non-recursive files; recursive files; bottom-up dirs; skip hidden items; sorted order
-- [ ] 4.2 Implement partitioning: skip already-random items unless `--force`
-- [ ] 4.3 Implement the preview: relative paths, `old -> new`, truncate after 20 with a hidden-count note
-- [ ] 4.4 Implement default confirm mode (preview + y/N) and interactive mode (y/N/a/q per item)
-- [ ] 4.5 Implement rename execution with per-item error reporting and final summary (renamed/skipped/failed)
-- [ ] 4.6 Handle interruption in interactive mode: print summary and exit 130
-- [ ] 4.7 Wire all modes through `main.rs` (dry-run exits after preview; no-items messages)
+- [x] 4.1 Implement discovery in `src/renamer.rs`: non-recursive files; recursive files; bottom-up dirs; skip hidden items; sorted order
+- [x] 4.2 Implement partitioning: skip already-random items unless `--force`
+- [x] 4.3 Implement the preview: relative paths, `old -> new`, truncate after 20 with a hidden-count note
+- [x] 4.4 Implement default confirm mode (preview + y/N) and interactive mode (y/N/a/q per item)
+- [x] 4.5 Implement rename execution with per-item error reporting and final summary (renamed/skipped/failed)
+- [x] 4.6 Handle interruption in interactive mode: print summary and exit 130
+- [x] 4.7 Wire all modes through `main.rs` (dry-run exits after preview; no-items messages)
 
 ## 5. Tests
 

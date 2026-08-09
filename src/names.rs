@@ -1,6 +1,3 @@
-// TODO: remove this once the renamer (task group 4) wires these items into main.
-#![allow(dead_code)]
-
 use rand::Rng;
 use rand::rng;
 use rand::rngs::ThreadRng;
