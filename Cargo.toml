@@ -2,6 +2,8 @@
 name = "randanarana"
 version = "0.1.0"
 edition = "2024"
+description = "Rename files to random alphanumeric names, keeping extensions"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.104"
