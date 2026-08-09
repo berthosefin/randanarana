@@ -24,4 +24,4 @@
 
 - [x] 5.1 `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test` all green
 - [x] 5.2 `cargo publish --dry-run` still clean and `cargo dist plan` succeeds
-- [ ] 5.3 CI workflows all pass on a pushed branch/PR
+- [x] 5.3 CI workflows all pass on a pushed branch/PR (fixed the release-plz workflow skip: job-level `if` cannot use `secrets`/`env`, moved to step-level guards on `env.RELEASE_PLZ_TOKEN != ''`)
