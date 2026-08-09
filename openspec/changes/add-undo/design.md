@@ -16,22 +16,27 @@
 
 ## Decisions
 
-**D1. CLI subcommands with a default via clap derive.** Use the documented clap pattern for a default subcommand (clap discussion #4134 / PR #4350):
+**D1. CLI subcommands with a default via clap derive.** Follow the documented clap pattern for a default subcommand (clap discussion #4134 / PR #4350), with two adjustments forced by clap 4.6 semantics:
 
 ```rust
 #[derive(Parser)]
 #[command(args_conflicts_with_subcommands = true)]
 struct Cli {
+    #[arg(short = 'n', long, global = true)]
+    dry_run: bool,
     #[command(subcommand)]
     command: Option<Command>,
     #[command(flatten)]
-    rename: RenameArgs,
+    rename: Option<RenameArgs>,
 }
 
 enum Command { Rename(RenameArgs), Undo(UndoArgs) }
 ```
 
-Dispatch: `cli.command.unwrap_or(Command::Rename(cli.rename))`. With `args_conflicts_with_subcommands`, `randanarana <DIR>` and `randanarana rename <DIR>` parse the same `RenameArgs`; `randanarana undo` parses `UndoArgs` (directory optional, default `.`). `RenameArgs` carries all current flags; `UndoArgs` carries only `-n/--dry-run`. Alternatives considered: a separate `-u/--undo` flag (less discoverable), hand-rolled dispatch on a positional `"undo"` token (fragile). The `unwrap_or` pattern is the clap-endorsed approach; verified against clap 4.6 semantics, and locked by the existing integration tests (help, exit codes, all flags) which must pass unchanged.
+1. The flattened default struct must be `Option<RenameArgs>`. A plain `RenameArgs` with a required positional `target` still triggers clap issue #3857 (the required arg is validated even when a subcommand is used, so `undo <DIR>` fails). Flattening `Option<RenameArgs>` makes the group inactive when a subcommand is used, which fixes it; the `target` positional stays required whenever the group is active.
+2. `-n/--dry-run` is shared by both subcommands, so it becomes a `global = true` flag on `Cli` (globals are exempt from `args_conflicts_with_subcommands`; a per-subcommand `-n` would otherwise be captured by the top-level flatten when running `undo -n`).
+
+Dispatch: `match cli.command { Some(Rename(args)) => run_rename(&args, cli.dry_run), Some(Undo(args)) => undo::run(&args, cli.dry_run), None => match cli.rename { Some(args) => run_rename(&args, cli.dry_run), None => cli::missing_target() } }` where `missing_target()` reproduces clap's standard exit-2 "required arguments" error for the no-args case (locked by the existing integration test). With `args_conflicts_with_subcommands`, mixing rename-only flags into a subcommand invocation is rejected. `randanarana <DIR>` and `randanarana rename <DIR>` parse the same `RenameArgs`; `randanarana undo [DIR]` parses `UndoArgs` (directory optional, default `.`). Alternatives considered: a separate `-u/--undo` flag (less discoverable), hand-rolled dispatch on a positional `"undo"` token (fragile). The behavior is locked by the existing integration tests (help, exit codes, all flags) which pass unchanged.
 
 **D2. Manifest as JSON with `serde` + `serde_json`.** New runtime deps. Shape:
 
@@ -59,7 +64,7 @@ Summary line `Done: X restored, Y skipped, Z failed.`; the manifest is deleted o
 
 ## Risks / Trade-offs
 
-- [clap default-subcommand quirk: required args + `args_conflicts_with_subcommands` interaction] → Mitigation: the pattern is the documented one (PR #4350 makes required fields in the flattened default struct work); the existing integration test suite verifies all current invocations after the refactor.
+- [clap default-subcommand quirk: required args + `args_conflicts_with_subcommands` interaction (issue #3857)] → Mitigation: flatten `Option<RenameArgs>` so the group is inactive under subcommands (the `target` positional remains required whenever the group is active), and hoist the shared `-n/--dry-run` into a global flag; the existing integration test suite verifies all current invocations after the refactor.
 - [Non-UTF-8 file names cannot be stored in the JSON manifest] → Such renames still happen but are logged as not undoable; document as a known limitation (rare on typical filesystems).
 - [Interrupted runs (real SIGINT) in default mode kill the process without writing the manifest] → Same limitation as today (no signal crate, design D10 of the rewrite change); interactive mode writes the manifest on its 130 path, which is the primary undo use case.
 - [A failed undo leaves the manifest behind, which may confuse] → It is intentional (retry support) and reported in the summary.

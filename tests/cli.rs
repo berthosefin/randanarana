@@ -18,6 +18,7 @@ fn dir_entries(dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(dir)
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| !n.starts_with('.'))
         .collect();
     names.sort();
     names
@@ -286,4 +287,222 @@ fn empty_directory_reports_no_items() {
         .assert()
         .success()
         .stdout(predicate::str::contains("No items to rename."));
+}
+
+fn only_file(dir: &Path) -> String {
+    let entries = dir_entries(dir);
+    assert_eq!(entries.len(), 1, "expected exactly one visible file");
+    entries[0].clone()
+}
+
+#[test]
+fn undo_restores_previous_rename() {
+    let dir = tempdir().unwrap();
+    write_files(dir.path(), &["a.txt"]);
+
+    randanarana()
+        .args([dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+    let new_name = only_file(dir.path());
+    assert_ne!(new_name, "a.txt");
+
+    randanarana()
+        .args(["undo", dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Done: 1 restored, 0 skipped, 0 failed.",
+        ));
+
+    assert_eq!(only_file(dir.path()), "a.txt");
+    assert!(!dir.path().join(".randanarana-undo.json").exists());
+}
+
+#[test]
+fn undo_without_manifest_reports_nothing() {
+    let dir = tempdir().unwrap();
+    write_files(dir.path(), &["a.txt"]);
+
+    randanarana()
+        .args(["undo", dir.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No renames to undo."));
+}
+
+#[test]
+fn undo_with_corrupt_manifest_fails() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join(".randanarana-undo.json"),
+        b"{ not valid json",
+    )
+    .unwrap();
+
+    randanarana()
+        .args(["undo", dir.path().to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("could not read undo manifest in"));
+}
+
+#[test]
+fn undo_dry_run_does_not_modify_files() {
+    let dir = tempdir().unwrap();
+    write_files(dir.path(), &["a.txt"]);
+
+    randanarana()
+        .args([dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+    let new_name = only_file(dir.path());
+
+    randanarana()
+        .args(["undo", "-n", dir.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 item to restore:"));
+
+    assert_eq!(only_file(dir.path()), new_name);
+    assert!(dir.path().join(".randanarana-undo.json").exists());
+}
+
+#[test]
+fn undo_declined_leaves_files_untouched() {
+    let dir = tempdir().unwrap();
+    write_files(dir.path(), &["a.txt"]);
+
+    randanarana()
+        .args([dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+    let new_name = only_file(dir.path());
+
+    randanarana()
+        .args(["undo", dir.path().to_str().unwrap()])
+        .write_stdin("n\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Cancelled."));
+
+    assert_eq!(only_file(dir.path()), new_name);
+    assert!(dir.path().join(".randanarana-undo.json").exists());
+}
+
+#[test]
+fn undo_conflict_skips_and_keeps_manifest() {
+    let dir = tempdir().unwrap();
+    write_files(dir.path(), &["a.txt"]);
+
+    randanarana()
+        .args([dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+    let new_name = only_file(dir.path());
+
+    fs::write(dir.path().join("a.txt"), b"new").unwrap();
+
+    randanarana()
+        .args(["undo", dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Done: 0 restored, 0 skipped, 1 failed.",
+        ));
+
+    let mut names = dir_entries(dir.path());
+    names.sort();
+    assert!(
+        names.contains(&new_name),
+        "renamed file must still be present"
+    );
+    assert!(
+        names.contains(&"a.txt".to_string()),
+        "blocking file must remain"
+    );
+    assert_eq!(names.len(), 2);
+
+    assert!(dir.path().join(".randanarana-undo.json").exists());
+}
+
+#[test]
+fn undo_restores_recursive_renames() {
+    let dir = tempdir().unwrap();
+    write_files(dir.path(), &["a.txt"]);
+    let sub = dir.path().join("sub");
+    fs::create_dir(&sub).unwrap();
+    write_files(&sub, &["deep.txt"]);
+
+    randanarana()
+        .args(["-r", dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Done: 2 renamed, 0 skipped, 0 failed.",
+        ));
+
+    assert!(!dir.path().join("sub/deep.txt").exists());
+
+    randanarana()
+        .args(["undo", dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Done: 2 restored, 0 skipped, 0 failed.",
+        ));
+
+    assert!(dir.path().join("a.txt").exists());
+    assert!(dir.path().join("sub/deep.txt").exists());
+    assert!(!dir.path().join(".randanarana-undo.json").exists());
+}
+
+#[test]
+fn rename_overwrites_previous_manifest() {
+    let dir = tempdir().unwrap();
+    write_files(dir.path(), &["a.txt", "b.txt"]);
+
+    randanarana()
+        .args([dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+    let mut first: Vec<String> = dir_entries(dir.path());
+    assert_eq!(first.len(), 2);
+    first.sort();
+
+    randanarana()
+        .args(["-f", dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+    let mut second: Vec<String> = dir_entries(dir.path());
+    assert_eq!(second.len(), 2);
+    second.sort();
+    assert_ne!(first, second, "second run should rename again");
+
+    randanarana()
+        .args(["undo", dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Done: 2 restored, 0 skipped, 0 failed.",
+        ));
+
+    assert_eq!(dir_entries(dir.path()).len(), 2);
+    let mut restored: Vec<String> = dir_entries(dir.path());
+    restored.sort();
+    assert_eq!(
+        restored, first,
+        "undo should restore names from the last run"
+    );
 }

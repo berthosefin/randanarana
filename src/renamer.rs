@@ -173,21 +173,22 @@ fn basename(path: &Path) -> &str {
         .unwrap_or("")
 }
 
-/// Rename a single item to its new name. Prints an error on failure.
-pub fn rename_one(item: &Item, target: &Path) -> bool {
+/// Rename a single item to its new name. Returns the new path on success,
+/// `None` on failure (an error is printed). Prints an error on failure.
+pub fn rename_one(item: &Item, target: &Path) -> Option<PathBuf> {
     let new_path = item
         .path
         .parent()
         .unwrap_or(Path::new(""))
         .join(&item.new_name);
     match fs::rename(&item.path, &new_path) {
-        Ok(()) => true,
+        Ok(()) => Some(new_path),
         Err(e) => {
             eprintln!(
                 "  Error: could not rename {}: {e}",
                 display_path(&item.path, target)
             );
-            false
+            None
         }
     }
 }

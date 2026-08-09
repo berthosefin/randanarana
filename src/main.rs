@@ -1,14 +1,27 @@
 mod cli;
+mod manifest;
 mod names;
 mod renamer;
+mod undo;
 
 use anyhow::{Context, Result, bail};
+use cli::{Command, RenameArgs};
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 fn main() -> Result<()> {
-    let args = cli::parse();
+    let cli = cli::parse();
+    match cli.command {
+        Some(Command::Rename(args)) => run_rename(&args, cli.dry_run),
+        Some(Command::Undo(args)) => undo::run(&args, cli.dry_run),
+        None => match cli.rename {
+            Some(args) => run_rename(&args, cli.dry_run),
+            None => cli::missing_target(),
+        },
+    }
+}
 
+fn run_rename(args: &RenameArgs, dry_run: bool) -> Result<()> {
     if args.length == 0 {
         bail!("invalid length: {} (must be greater than 0)", args.length);
     }
@@ -21,7 +34,8 @@ fn main() -> Result<()> {
     let (files, dirs) = renamer::discover(target, args.recursive || args.dirs, args.dirs)
         .with_context(|| format!("could not read directory {}", target.display()))?;
 
-    let mut generator = names::NameGenerator::new_thread(args.prefix, args.suffix, args.length);
+    let mut generator =
+        names::NameGenerator::new_thread(args.prefix.clone(), args.suffix.clone(), args.length);
     let plan = renamer::plan(&mut generator, &files, &dirs, args.force);
 
     if plan.items.is_empty() {
@@ -36,7 +50,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    if args.dry_run {
+    if dry_run {
         renamer::print_preview(&plan.items, plan.skipped, target);
         return Ok(());
     }
@@ -60,18 +74,26 @@ fn main() -> Result<()> {
 
     let mut renamed = 0;
     let mut failed = 0;
+    let mut entries = Vec::new();
     for item in &plan.items {
-        if renamer::rename_one(item, target) {
-            renamed += 1;
-        } else {
-            failed += 1;
+        match renamer::rename_one(item, target) {
+            Some(new_path) => {
+                renamed += 1;
+                entries.push(manifest::RenameEntry::from_paths(
+                    &item.path, &new_path, target,
+                ));
+            }
+            None => failed += 1,
         }
+    }
+    if !entries.is_empty() {
+        manifest::Manifest::current(entries).write(target)?;
     }
     renamer::print_summary(renamed, plan.skipped, failed);
     Ok(())
 }
 
-fn is_yes(answer: &str) -> bool {
+pub fn is_yes(answer: &str) -> bool {
     matches!(answer.to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
@@ -94,6 +116,7 @@ fn run_interactive(plan: &renamer::Plan, target: &Path) -> Result<()> {
     let mut input = stdin.lock();
     let mut renamed = 0usize;
     let mut failed = 0usize;
+    let mut entries = Vec::new();
     let mut all = false;
     let mut k = 0usize;
 
@@ -115,7 +138,10 @@ fn run_interactive(plan: &renamer::Plan, target: &Path) -> Result<()> {
             io::stdout().flush()?;
             let mut line = String::new();
             match input.read_line(&mut line) {
-                Ok(0) | Err(_) => interrupted_summary(plan, renamed, failed),
+                Ok(0) | Err(_) => {
+                    write_manifest_or_exit(&entries, target);
+                    interrupted_summary(plan, renamed, failed);
+                }
                 Ok(_) => {}
             }
             match line.trim().to_ascii_lowercase().as_str() {
@@ -125,16 +151,28 @@ fn run_interactive(plan: &renamer::Plan, target: &Path) -> Result<()> {
                 _ => continue,
             }
         }
-        if renamer::rename_one(item, target) {
-            renamed += 1;
-        } else {
-            failed += 1;
+        match renamer::rename_one(item, target) {
+            Some(p) => {
+                renamed += 1;
+                entries.push(manifest::RenameEntry::from_paths(&item.path, &p, target));
+            }
+            None => failed += 1,
         }
     }
 
+    write_manifest_or_exit(&entries, target);
     let skipped = plan.skipped + plan.items.len() - renamed - failed;
     renamer::print_summary(renamed, skipped, failed);
     Ok(())
+}
+
+fn write_manifest_or_exit(entries: &[manifest::RenameEntry], target: &Path) {
+    if entries.is_empty() {
+        return;
+    }
+    if let Err(e) = manifest::Manifest::current(entries.to_vec()).write(target) {
+        eprintln!("Warning: could not write undo manifest: {e}");
+    }
 }
 
 fn interrupted_summary(plan: &renamer::Plan, renamed: usize, failed: usize) -> ! {
