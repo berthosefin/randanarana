@@ -197,3 +197,70 @@ pub fn print_summary(renamed: usize, skipped: usize, failed: usize) {
     println!();
     println!("Done: {renamed} renamed, {skipped} skipped, {failed} failed.");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::names::NameGenerator;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use tempfile::tempdir;
+
+    fn generator(prefix: &str, suffix: &str) -> NameGenerator<StdRng> {
+        NameGenerator::new(
+            prefix.to_string(),
+            suffix.to_string(),
+            8,
+            StdRng::seed_from_u64(1),
+        )
+    }
+
+    #[test]
+    fn plan_skips_already_random_unless_force() {
+        let dir = tempdir().unwrap();
+        let random = dir.path().join("Ab3x9Qpz.jpg");
+        let normal = dir.path().join("normal.jpg");
+        fs::write(&random, b"x").unwrap();
+        fs::write(&normal, b"x").unwrap();
+        let files = vec![random.clone(), normal.clone()];
+
+        let first = plan(&mut generator("", ""), &files, &[], false);
+        assert_eq!(first.skipped, 1);
+        assert_eq!(first.items.len(), 1);
+        assert_eq!(first.items[0].path, normal);
+
+        let forced = plan(&mut generator("", ""), &files, &[], true);
+        assert_eq!(forced.skipped, 0);
+        assert_eq!(forced.items.len(), 2);
+    }
+
+    #[test]
+    fn plan_respects_prefix_and_suffix() {
+        let dir = tempdir().unwrap();
+        let prefixed = dir.path().join("abc98765432x.jpg");
+        let other = dir.path().join("abc98765432.jpg");
+        fs::write(&prefixed, b"x").unwrap();
+        fs::write(&other, b"x").unwrap();
+        let files = vec![prefixed.clone(), other.clone()];
+
+        let prefixed = plan(&mut generator("abc", "x"), &files, &[], false);
+        assert_eq!(prefixed.skipped, 1);
+        assert_eq!(prefixed.items.len(), 1);
+        assert_eq!(prefixed.items[0].path, other);
+    }
+
+    #[test]
+    fn plan_skips_already_random_directories() {
+        let dir = tempdir().unwrap();
+        let random_dir = dir.path().join("Ab3x9Qpz");
+        let normal_dir = dir.path().join("notes");
+        fs::create_dir(&random_dir).unwrap();
+        fs::create_dir(&normal_dir).unwrap();
+        let dirs = vec![random_dir.clone(), normal_dir.clone()];
+
+        let dirs_plan = plan(&mut generator("", ""), &[], &dirs, false);
+        assert_eq!(dirs_plan.skipped, 1);
+        assert_eq!(dirs_plan.items.len(), 1);
+        assert_eq!(dirs_plan.items[0].path, normal_dir);
+    }
+}

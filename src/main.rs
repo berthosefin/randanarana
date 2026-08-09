@@ -94,7 +94,6 @@ fn run_interactive(plan: &renamer::Plan, target: &Path) -> Result<()> {
     let mut input = stdin.lock();
     let mut renamed = 0usize;
     let mut failed = 0usize;
-    let mut declined = 0usize;
     let mut all = false;
     let mut k = 0usize;
 
@@ -116,17 +115,14 @@ fn run_interactive(plan: &renamer::Plan, target: &Path) -> Result<()> {
             io::stdout().flush()?;
             let mut line = String::new();
             match input.read_line(&mut line) {
-                Ok(0) | Err(_) => interrupted_summary(renamed, plan.skipped + declined, failed),
+                Ok(0) | Err(_) => interrupted_summary(plan, renamed, failed),
                 Ok(_) => {}
             }
             match line.trim().to_ascii_lowercase().as_str() {
                 "a" => all = true,
                 "q" => break,
                 "y" => {}
-                _ => {
-                    declined += 1;
-                    continue;
-                }
+                _ => continue,
             }
         }
         if renamer::rename_one(item, target) {
@@ -136,11 +132,13 @@ fn run_interactive(plan: &renamer::Plan, target: &Path) -> Result<()> {
         }
     }
 
-    renamer::print_summary(renamed, plan.skipped + declined, failed);
+    let skipped = plan.skipped + plan.items.len() - renamed - failed;
+    renamer::print_summary(renamed, skipped, failed);
     Ok(())
 }
 
-fn interrupted_summary(renamed: usize, skipped: usize, failed: usize) -> ! {
+fn interrupted_summary(plan: &renamer::Plan, renamed: usize, failed: usize) -> ! {
+    let skipped = plan.skipped + plan.items.len() - renamed - failed;
     renamer::print_summary(renamed, skipped, failed);
     std::process::exit(130);
 }

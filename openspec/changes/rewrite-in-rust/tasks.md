@@ -30,10 +30,10 @@
 
 ## 5. Tests
 
-- [ ] 5.1 Unit tests for name generation (format, charset, extension handling, uniqueness, collisions)
-- [ ] 5.2 Unit tests for matching/partitioning (already-random skip, force, prefix/suffix cases)
-- [ ] 5.3 Integration tests with `assert_cmd` + `tempfile`: dry-run, real rename, extension preserved, recursive, `--dirs`, `--force`, global decline, interactive via piped stdin
-- [ ] 5.4 Verify summary counts and exit codes in integration tests
+- [x] 5.1 Unit tests for name generation (format, charset, extension handling, uniqueness, collisions)
+- [x] 5.2 Unit tests for matching/partitioning (already-random skip, force, prefix/suffix cases)
+- [x] 5.3 Integration tests with `assert_cmd` + `tempfile`: dry-run, real rename, extension preserved, recursive, `--dirs`, `--force`, global decline, interactive via piped stdin
+- [x] 5.4 Verify summary counts and exit codes in integration tests
 
 ## 6. Documentation & Publishing
 
