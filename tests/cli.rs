@@ -506,3 +506,73 @@ fn rename_overwrites_previous_manifest() {
         "undo should restore names from the last run"
     );
 }
+
+#[test]
+fn insufficient_length_fails_without_renaming() {
+    let dir = tempdir().unwrap();
+    let mut names: Vec<String> = (0..32).map(|i| format!("photo{i:02}.jpg")).collect();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    write_files(dir.path(), &refs);
+    names.sort();
+
+    randanarana()
+        .args(["--length", "1", dir.path().to_str().unwrap()])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("cannot rename with --length 1"))
+        .stderr(predicate::str::contains("\".jpg\""))
+        .stderr(predicate::str::contains("62"));
+
+    assert_eq!(dir_entries(dir.path()), names, "nothing should be renamed");
+    assert!(
+        !dir.path().join(".randanarana-undo.json").exists(),
+        "no manifest should be written"
+    );
+}
+
+#[test]
+fn length_two_handles_hundreds_of_files() {
+    let dir = tempdir().unwrap();
+    let mut names: Vec<String> = (0..100).map(|i| format!("f{i:03}.jpg")).collect();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    write_files(dir.path(), &refs);
+    names.clear();
+
+    randanarana()
+        .args(["--length", "2", dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Done: 100 renamed, 0 skipped, 0 failed.",
+        ));
+
+    let renamed = dir_entries(dir.path());
+    assert_eq!(renamed.len(), 100);
+    assert!(
+        renamed.iter().all(|n| n.ends_with(".jpg")),
+        "all files must keep their extension"
+    );
+}
+
+#[test]
+fn length_one_accepts_pools_that_each_fit() {
+    let dir = tempdir().unwrap();
+    let mut names: Vec<String> = (0..20)
+        .map(|i| format!("photo{i:02}.jpg"))
+        .chain((0..20).map(|i| format!("image{i:02}.png")))
+        .collect();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    write_files(dir.path(), &refs);
+    names.clear();
+
+    randanarana()
+        .args(["--length", "1", dir.path().to_str().unwrap()])
+        .write_stdin("y\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Done: 40 renamed, 0 skipped, 0 failed.",
+        ));
+}

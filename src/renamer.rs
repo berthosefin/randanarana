@@ -1,20 +1,24 @@
+use anyhow::{Result, bail};
 use rand::Rng;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::names::NameGenerator;
+use crate::names::{NameGenerator, max_names};
 
 pub const PREVIEW_MAX: usize = 20;
 
 /// An item planned for renaming.
+#[derive(Debug)]
 pub struct Item {
     pub path: PathBuf,
     pub new_name: String,
 }
 
 /// Result of planning: the items to rename and how many were skipped.
+#[derive(Debug)]
 pub struct Plan {
     pub items: Vec<Item>,
     pub skipped: usize,
@@ -87,12 +91,18 @@ fn collect_dirs(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
 
 /// Build the rename plan: reserve original names, partition items into
 /// "to rename" vs "already-random (skip)", and generate the new names.
+///
+/// Returns an error when a pool of items (files sharing an extension, or
+/// directories and extensionless files together) would need more distinct
+/// names than `62^LENGTH` allows, i.e. when generation could never terminate.
 pub fn plan<R: Rng>(
     generator: &mut NameGenerator<R>,
     files: &[PathBuf],
     dirs: &[PathBuf],
     force: bool,
-) -> Plan {
+) -> Result<Plan> {
+    check_feasibility(generator, files, dirs, force)?;
+
     for path in files.iter().chain(dirs.iter()) {
         generator.reserve(basename(path));
     }
@@ -126,7 +136,74 @@ pub fn plan<R: Rng>(
         });
     }
 
-    Plan { items, skipped }
+    Ok(Plan { items, skipped })
+}
+
+/// Per-pool counts of items that reserve a body (`orig`) and items that need a
+/// newly generated body (`to_generate`). Pool key is the extension including
+/// the dot for files; directories and extensionless files share the `None` pool.
+#[derive(Default)]
+struct Pool {
+    orig: u64,
+    to_generate: u64,
+}
+
+fn pool_key(name: &str, is_dir: bool) -> Option<String> {
+    if is_dir {
+        None
+    } else {
+        crate::names::extension_with_dot(name)
+    }
+}
+
+/// Refuse to run when a pool that must generate names could exhaust its space.
+fn check_feasibility<R: Rng>(
+    generator: &NameGenerator<R>,
+    files: &[PathBuf],
+    dirs: &[PathBuf],
+    force: bool,
+) -> Result<()> {
+    let length = generator.length();
+    let Some(limit) = max_names(length) else {
+        return Ok(());
+    };
+
+    let mut pools: HashMap<Option<String>, Pool> = HashMap::new();
+    for path in files {
+        let name = basename(path);
+        let pool = pools.entry(pool_key(name, false)).or_default();
+        pool.orig += 1;
+        if force || !generator.matches_pattern(name, false) {
+            pool.to_generate += 1;
+        }
+    }
+    for path in dirs {
+        let name = basename(path);
+        let pool = pools.entry(pool_key(name, true)).or_default();
+        pool.orig += 1;
+        if force || !generator.matches_pattern(name, true) {
+            pool.to_generate += 1;
+        }
+    }
+
+    for (key, pool) in &pools {
+        if pool.to_generate == 0 || pool.orig + pool.to_generate <= limit {
+            continue;
+        }
+        let pool_desc = match key {
+            Some(ext) => format!("{ext:?} files"),
+            None => "directories and extensionless files".to_string(),
+        };
+        bail!(
+            "cannot rename with --length {length}: {pool_desc} needs {} unique names \
+             ({} existing + {} to rename) but only 62^{length} = {limit} are possible. \
+             Use a longer --length.",
+            pool.orig + pool.to_generate,
+            pool.orig,
+            pool.to_generate,
+        );
+    }
+    Ok(())
 }
 
 /// A path displayed relative to the target directory.
@@ -216,6 +293,15 @@ mod tests {
         )
     }
 
+    fn generator_with_length(prefix: &str, suffix: &str, length: usize) -> NameGenerator<StdRng> {
+        NameGenerator::new(
+            prefix.to_string(),
+            suffix.to_string(),
+            length,
+            StdRng::seed_from_u64(1),
+        )
+    }
+
     #[test]
     fn plan_skips_already_random_unless_force() {
         let dir = tempdir().unwrap();
@@ -225,12 +311,12 @@ mod tests {
         fs::write(&normal, b"x").unwrap();
         let files = vec![random.clone(), normal.clone()];
 
-        let first = plan(&mut generator("", ""), &files, &[], false);
+        let first = plan(&mut generator("", ""), &files, &[], false).unwrap();
         assert_eq!(first.skipped, 1);
         assert_eq!(first.items.len(), 1);
         assert_eq!(first.items[0].path, normal);
 
-        let forced = plan(&mut generator("", ""), &files, &[], true);
+        let forced = plan(&mut generator("", ""), &files, &[], true).unwrap();
         assert_eq!(forced.skipped, 0);
         assert_eq!(forced.items.len(), 2);
     }
@@ -244,7 +330,7 @@ mod tests {
         fs::write(&other, b"x").unwrap();
         let files = vec![prefixed.clone(), other.clone()];
 
-        let prefixed = plan(&mut generator("abc", "x"), &files, &[], false);
+        let prefixed = plan(&mut generator("abc", "x"), &files, &[], false).unwrap();
         assert_eq!(prefixed.skipped, 1);
         assert_eq!(prefixed.items.len(), 1);
         assert_eq!(prefixed.items[0].path, other);
@@ -259,9 +345,71 @@ mod tests {
         fs::create_dir(&normal_dir).unwrap();
         let dirs = vec![random_dir.clone(), normal_dir.clone()];
 
-        let dirs_plan = plan(&mut generator("", ""), &[], &dirs, false);
+        let dirs_plan = plan(&mut generator("", ""), &[], &dirs, false).unwrap();
         assert_eq!(dirs_plan.skipped, 1);
         assert_eq!(dirs_plan.items.len(), 1);
         assert_eq!(dirs_plan.items[0].path, normal_dir);
+    }
+
+    #[test]
+    fn plan_accepts_pools_that_each_fit() {
+        let dir = tempdir().unwrap();
+        let files: Vec<PathBuf> = (0..20)
+            .map(|i| dir.path().join(format!("photo{i}.jpg")))
+            .chain((0..20).map(|i| dir.path().join(format!("image{i}.png"))))
+            .collect();
+
+        let plan = plan(&mut generator_with_length("", "", 1), &files, &[], false).unwrap();
+        assert_eq!(plan.items.len(), 40);
+        assert_eq!(plan.skipped, 0);
+    }
+
+    #[test]
+    fn plan_rejects_pool_that_overflows() {
+        let dir = tempdir().unwrap();
+        let files: Vec<PathBuf> = (0..60)
+            .map(|i| dir.path().join(format!("photo{i}.jpg")))
+            .chain((0..5).map(|i| dir.path().join(format!("image{i}.png"))))
+            .collect();
+
+        let err = plan(&mut generator_with_length("", "", 1), &files, &[], false).unwrap_err();
+        assert!(err.to_string().contains("62"), "message: {err}");
+        assert!(err.to_string().contains("120"), "message: {err}");
+    }
+
+    #[test]
+    fn plan_force_can_make_an_acceptable_run_unfeasible() {
+        let dir = tempdir().unwrap();
+        let bodies: Vec<char> = (b'a'..=b'z')
+            .chain(b'A'..=b'Z')
+            .chain(b'0'..=b'9')
+            .map(|c| c as char)
+            .collect();
+        assert_eq!(bodies.len(), 62);
+        let files: Vec<PathBuf> = bodies
+            .iter()
+            .map(|c| dir.path().join(format!("{c}.jpg")))
+            .collect();
+
+        let ok = plan(&mut generator_with_length("", "", 1), &files, &[], false).unwrap();
+        assert_eq!(ok.skipped, 62);
+        assert_eq!(ok.items.len(), 0);
+
+        let err = plan(&mut generator_with_length("", "", 1), &files, &[], true).unwrap_err();
+        assert!(err.to_string().contains("62"), "message: {err}");
+    }
+
+    #[test]
+    fn plan_dirs_and_extensionless_share_one_pool() {
+        let dir = tempdir().unwrap();
+        let files: Vec<PathBuf> = (0..30)
+            .map(|i| dir.path().join(format!("readme{i}")))
+            .collect();
+        let dirs: Vec<PathBuf> = (0..30)
+            .map(|i| dir.path().join(format!("folder{i}")))
+            .collect();
+
+        let err = plan(&mut generator_with_length("", "", 1), &files, &dirs, false).unwrap_err();
+        assert!(err.to_string().contains("62"), "message: {err}");
     }
 }

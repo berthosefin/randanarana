@@ -7,6 +7,12 @@ use std::path::Path;
 
 const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
+/// Number of distinct bodies a name can take for the given length, or `None`
+/// when that number overflows `u64` (length >= 11), meaning no practical limit.
+pub fn max_names(length: usize) -> Option<u64> {
+    62u64.checked_pow(length as u32)
+}
+
 pub fn random_body(length: usize, rng: &mut impl Rng) -> String {
     (0..length)
         .map(|_| *CHARSET.choose(rng).expect("charset is not empty") as char)
@@ -59,6 +65,10 @@ impl<R: Rng> NameGenerator<R> {
             rng,
             used: HashSet::new(),
         }
+    }
+
+    pub fn length(&self) -> usize {
+        self.length
     }
 
     /// Remember a name that must never be generated again (e.g. an existing item).
@@ -122,6 +132,29 @@ mod tests {
         let mut rng = rng();
         let body = random_body(32, &mut rng);
         assert!(body.chars().all(|c| CHARSET.contains(&(c as u8))));
+    }
+
+    #[test]
+    fn max_names_exact_values() {
+        assert_eq!(max_names(1), Some(62));
+        assert_eq!(max_names(2), Some(3844));
+        assert_eq!(max_names(3), Some(238_328));
+    }
+
+    #[test]
+    fn max_names_overflows_for_large_lengths() {
+        assert_eq!(max_names(10), Some(62u64.pow(10)));
+        assert_eq!(max_names(11), None);
+    }
+
+    #[test]
+    fn max_names_grows_with_length() {
+        let mut previous = 0u64;
+        for length in 1..10 {
+            let current = max_names(length).unwrap();
+            assert!(current > previous, "not monotonic at length {length}");
+            previous = current;
+        }
     }
 
     #[test]

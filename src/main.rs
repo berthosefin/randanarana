@@ -36,7 +36,7 @@ fn run_rename(args: &RenameArgs, dry_run: bool) -> Result<()> {
 
     let mut generator =
         names::NameGenerator::new_thread(args.prefix.clone(), args.suffix.clone(), args.length);
-    let plan = renamer::plan(&mut generator, &files, &dirs, args.force);
+    let plan = renamer::plan(&mut generator, &files, &dirs, args.force)?;
 
     if plan.items.is_empty() {
         if plan.skipped > 0 {
