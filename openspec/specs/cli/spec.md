@@ -88,3 +88,7 @@ The system SHALL exit with status 0 on success and help, and with a nonzero stat
 #### Scenario: Interrupted run
 - **WHEN** the user interrupts the tool during an interactive run
 - **THEN** the tool prints a summary and exits with status 130
+
+#### Scenario: Insufficient name space
+- **WHEN** the requested `--length` cannot yield enough unique names for the items to rename in the target directory
+- **THEN** the tool prints an error explaining the length and the number of names needed and available, renames nothing, and exits with a nonzero status
