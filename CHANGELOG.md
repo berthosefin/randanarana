@@ -1,0 +1,19 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.1](https://github.com/berthosefin/randanarana/compare/v0.1.0...v0.1.1) - 2026-08-11
+
+### Added
+
+- refuse to run when the random name space is insufficient
+
+### Other
+
+- archive guard-insufficient-name-space change and sync specs
+- let cargo-dist own GitHub releases (git_release_enable = false)
